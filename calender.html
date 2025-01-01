@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Calendar</title>
+    <link href="M5_main.css" rel="stylesheet">
+    <style>
+        #modal, #eventModal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        #modalContent, #eventModalContent {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 300px;
+        }
+
+        #modalContent input, #modalContent button, #eventModalContent input, #eventModalContent button {
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .event-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 5px;
+            color: white;
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .more-events {
+            color: gray;
+            cursor: pointer;
+        }
+
+        .radio-group {
+            display: flex;
+            gap: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <section id="header">
+        <h1 id="title">Calendar</h1>
+        <p id="username"></p>
+    </section>
+
+    <section id="calendar">
+        <div class="month" id="currentMonth">
+            <input type="button" id="lastMonth" class="moveMonth" value="-">
+            <h2 id="yearContent">Year</h2>
+            <h2 id="monthName">Month</h2>
+            <input type="button" id="nextMonth" class="moveMonth" value="+">
+        </div>
+
+        <div id="content">
+            <table id="dateDetail"></table>
+        </div>
+    </section>
+    
+    <div id="modal">
+        <div id="modalContent">
+            <h3>ADD EVENT</h3>
+            <form>
+                <div class="radio-group">
+                    <label><input type="radio" name="tag" value="personal">Personal</label>
+                    <label><input type="radio" name="tag" value="group">Group</label>
+                    <label><input type="radio" name="tag" value="off" checked>Off</label>
+                </div>    
+            </form>
+            <input type="text" id="eventTitle" placeholder="Event Title" required>
+            <input type="time" id="eventTime" required>
+            <button id="saveEvent">Save Event</button>
+            <hr>
+            <p>Create Group event (using comma between secret codes and enable the group tag) or share with one specific friend.</p>
+            <input type="text" id="shareWith" placeholder="Enter the secret code that your friend share">
+            <button id="shareEvent">Share Event</button>
+            <hr>
+            <button id="cancelEvent">Cancel</button>
+        </div>
+    </div>
+
+    <div id="eventModal">
+        <div id="eventModalContent">
+            <h3>EDIT EVENT</h3>
+            <input type="text" id="editEventTitle" placeholder="Event Title" required>
+            <input type="date" id="editEventDate" required>
+            <input type="time" id="editEventTime" required>
+            <button id="editEvent">Edit Event</button>
+            <hr>
+            <input type="number" id="shareWith2" placeholder="Enter the your friend's secret code">
+            <button id="shareEvent2">Share Event</button>
+            <hr>
+            <button id="deleteEvent">Delete Event</button>
+            <button id="closeEventModal">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // Date-related variables and functions
+        const date = new Date();
+        let year = date.getFullYear();
+        let month = date.getMonth();
+        let selectedDate = null;
+        let events = {};
+        let selectedEventId = null;
+        let globalSelectedDate = null;
+        let globalUserId = null;
+        let tag = "Off";
+
+        const monthNames = [
+            "January", "February", "March", "April",
+            "May", "June", "July", "August",
+            "September", "October", "November", "December"
+        ];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            insertCalendar();
+            getUser();
+        });
+
+        function insertCalendar() {
+            document.getElementById('yearContent').innerHTML = year;
+            document.getElementById('monthName').innerHTML = monthNames[month];
+            initialTable(year, month);
+        }
+
+        function initialTable(year, month) {
+            const numOfDays = new Date(year, month + 1, 0).getDate();
+            const firstDay = new Date(year, month, 1).getDay();
+            const cTable = document.getElementById('dateDetail');
+            cTable.innerHTML = ""; // Clear previous content
+
+            const headerRow = cTable.insertRow();
+            ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].forEach(day => {
+                const th = document.createElement('th');
+                th.textContent = day;
+                headerRow.appendChild(th);
+            });
+
+            let date = 1;
+            for (let i = 0; i < 6; i++) {
+                const row = cTable.insertRow();
+                for (let j = 0; j < 7; j++) {
+                    const cell = row.insertCell();
+                    if (i === 0 && j < firstDay) {
+                        cell.innerHTML = '';
+                    } else if (date > numOfDays) {
+                        break;
+                    } else {
+                        cell.textContent = date;
+                        cell.addEventListener("click", ((currentDate) => () => openModal(currentDate))(date));
+                        cell.id = `day-${date}`;
+                        const cellDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`;                   
+                        renderEvents(cell, cellDate);
+                        date++;
+                    }
+                }
+            }
+        }
+
+        document.getElementById("lastMonth").addEventListener("click", goToLast);
+        document.getElementById("nextMonth").addEventListener("click", goToNext);
+
+        function goToLast() {
+            month = month === 0 ? 11 : month - 1;
+            year = month === 11 ? year - 1 : year;
+            insertCalendar();
+            loadEvents();
+        }
+
+        function goToNext() {
+            month = month === 11 ? 0 : month + 1;
+            year = month === 0 ? year + 1 : year;
+            insertCalendar();
+            loadEvents();
+        }
+
+        function renderEvents(cell, date) {
+            const eventsForDate = events[date] || [];
+
+            cell.innerHTML = `<div>${parseInt(date.split("-")[2])}</div>`;
+            const eventList = document.createElement("ul");
+            eventsForDate.slice(0,3).forEach(event => {
+                const eventItem = document.createElement("li");
+                eventItem.classList.add("event-itm");
+                if (event.tag && event.tag !== "Off") {
+                    eventItem.innerHTML = `<span style="color: red;">${event.tag}</span> ${event.time} - ${truncateText(event.title, 10)}`;
+                }
+                else {
+                    eventItem.innerText = `${event.time} - ${truncateText(event.title, 10)}`;
+                }
+                eventItem.style.backgroundColor = getRandomColor();
+                eventItem.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    console.log(event.eid);
+                    selectedEventId = event.eid;
+                    openEditEventModal({ id: event.eid, title: event.title, date: event.date, time: event.time });
+                });
+                eventList.appendChild(eventItem);
+            });
+
+            if(eventsForDate.length > 3) {
+                const moreItem = document.createElement("li");
+                moreItem.classList.add("more-events");
+                moreItem.innerText = `+ ${eventsForDate.length - 3} more ...`;
+                moreItem.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                });
+                eventList.appendChild(moreItem);
+            }
+            cell.appendChild(eventList);
+        }
+
+        function truncateText(text, length) {
+            return text.length > length ? text.slice(0, length) + "..." : text;
+        }
+
+        function getRandomColor() {
+            const hue = Math.floor(Math.random()*360);
+            const color = `hsl(${hue}, 70%, 85%)`;
+            return color;
+        }
+
+        function openModal(day) {
+            selectedDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            globalSelectedDate = selectedDate;
+            console.log(selectedDate);
+            document.getElementById('modal').style.display = "flex";
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = "none";
+            document.getElementById('eventTitle').value = "";
+            document.getElementById('eventTime').value = "";
+        }
+
+        function closeEditEventModal() {
+            document.getElementById("eventModal").style.display = "none";
+            document.getElementById("editEventTitle").value = "";
+            document.getElementById("editEventDate").value = "";
+            document.getElementById("editEventTime").value = "";
+        }
+
+        document.getElementById("saveEvent").addEventListener("click", () => {
+            const title = document.getElementById('eventTitle').value;
+            const time = document.getElementById('eventTime').value;
+            const tag = document.querySelector('input[name="tag"]:checked').value;
+            const token = localStorage.getItem('csrfToken');
+
+            if (!title || !time) {
+                alert("Please enter both title and time.");
+                return;
+            }
+
+            alert(tag);
+
+            // addEvent(title, selectedDate, time);
+            fetch("event.php", {
+                method: "POST",
+                body: JSON.stringify({globalUserId, title, globalSelectedDate, time, tag, token}),
+                credentials: "same-origin" // Ensures cookies are included for session authentication
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const dateSet = {id: data.eventId, title, time, tag};
+                    console.log(dateSet);
+                    if(!events[selectedDate]) events[selectedDate] = [];
+                    events[selectedDate].push(dateSet);
+                    localStorage.setItem('csrfToken', data.csrfToken);
+                    alert("Event added successfully!");
+                    insertCalendar(); // Refresh calendar to reflect new event
+                } else {
+                    alert(`Failed to add event: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error("Error in fetch operation:", error);
+                alert(`Failed to add event: ${error.message}`);
+            });
+
+            closeModal();
+        });
+
+        document.getElementById("cancelEvent").addEventListener("click", closeModal);
+
+        function openAddEventModal(day) {
+            selectedDate = `${year}-${String(month+1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            document.getElementById("modal").style.display = "flex";
+        }
+
+        function openEditEventModal(event) {
+            console.log(selectedEventId);
+            document.getElementById("editEventTitle").value = event.title;
+            document.getElementById("editEventDate").value = event.date;
+            document.getElementById("editEventTime").value = event.time;
+            document.getElementById("eventModal").style.display = "flex";
+        }
+
+
+        document.getElementById("editEvent").addEventListener("click", () => {
+            const title = document.getElementById("editEventTitle").value;
+            const date = document.getElementById("editEventDate").value;
+            const time = document.getElementById("editEventTime").value;
+            const token = localStorage.getItem('csrfToken');
+
+            fetch("editEvent.php", {
+                method: "POST",
+                body: JSON.stringify({eid:selectedEventId, title, date, time, token}),
+                headers: {"Content-Type": "application/json"}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    // const eventList = events[selectedDate];
+                    // const eventIndex = eventList.findIndex(event=> event.eid === selectedEventId);
+                    // if(eventIndex !== -1) {
+                    //     eventList[eventIndex] = {id: selectedEventId, title, time};
+                    //     insertCalendar();
+                    // }
+                    localStorage.setItem('csrfToken', data.csrfToken);
+                    alert("Editing success");
+                    loadEvents();
+                } else {
+                    alert("Failed to edit event: " + data.message);
+                }
+            });
+            closeEditEventModal();
+        })
+        
+        document.getElementById("deleteEvent").addEventListener("click", () => {
+            fetch("deleteEvent.php", {
+                method: "POST",
+                body: JSON.stringify({id: selectedEventId, token: localStorage.getItem('csrfToken')}),
+                headers: {"Content-Type": "application/json"}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    alert("Event deleted successfully!");
+                    loadEvents();
+                } else {
+                    alert("Failed to delete event: " + data.message);
+                }
+            });
+            closeEditEventModal();
+        })
+
+        document.getElementById("closeEventModal").addEventListener("click", closeEditEventModal);
+        console.log(events);
+        
+        function loadEvents() {
+            fetch("getEvents.php", {
+                method: "POST",
+                body: JSON.stringify({user_id: globalUserId, year, month: month + 1}),
+                headers: {"Content-Type": "application/json"}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    events = data.events.reduce((acc, event) => {
+                        if (!acc[event.date]) acc[event.date] = [];
+                        acc[event.date].push(event);
+                        return acc;
+                }, {});
+                initialTable(year, month);
+                }
+            });
+        }
+
+        // function addEvent(title, date, time) {
+        //     const formData = new FormData();
+        //     formData.append("title", title);
+        //     formData.append("date", date);
+        //     formData.append("time", time);
+
+    
+
+        //     fetch("event.php", {
+        //         method: "POST",
+        //         body: formData,
+        //         credentials: "same-origin" // Ensures cookies are included for session authentication
+        //     })
+        //     .then(response => {
+        //         if (!response.ok) {
+        //             throw new Error(`Server error: ${response.status}`);
+        //         }
+        //         return response.json();
+        //     })
+        //     .then(data => {
+        //         if (data.success) {
+        //             alert("Event added successfully!");
+        //             insertCalendar(); // Refresh calendar to reflect new event
+        //         } else {
+        //             alert(`Failed to add event: ${data.message}`);
+        //         }
+        //     })
+        //     .catch(error => {
+        //         console.error("Error in fetch operation:", error);
+        //         alert(`Failed to add event: ${error.message}`);
+        //     });
+        // }
+        function getUser(event){
+        // Retrieve CSRF token and username from local storage
+            const csrfToken = localStorage.getItem('csrfToken');
+            const username = localStorage.getItem('username');
+
+    //here
+            if (!csrfToken || !username) {
+                alert('You are not logged in!');
+                window.location.href = 'login.html';
+            } else {
+                console.log('CSRF Token:', csrfToken);
+                console.log('Username:', username);
+
+                // Fetch user_id from getUsers.php
+                fetch('getUsers.php', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.user_id) {
+                        console.log('User ID:', data.user_id);
+                        // Use the user_id as needed
+                        const usernameDisplay = data.username;
+                        globalUserId = data.user_id;
+                        getEvents(data.user_id);
+                        loadEvents();
+                    } else {
+                        console.error('Error:', data.error);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+            }
+        }
+        
+
+        function getUsername(event){
+        // Retrieve CSRF token and username from local storage
+        const csrfToken = localStorage.getItem('csrfToken');
+        const username = localStorage.getItem('username');
+
+        //and here
+        if (!csrfToken || !username) {
+            alert('You are not logged in!');
+            window.location.href = 'login.html';
+        } else {
+            console.log('CSRF Token:', csrfToken);
+            console.log('Username:', username);
+
+            // Fetch user_id from getUsers.php
+            fetch('getUsers.php', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.user_id) {
+                    // Use the user_id as needed
+                    const usernameDisplay = data.username;
+                    console.log('Username:', usernameDisplay);
+                    document.getElementById('username').textContent = 'Welcome, '+usernameDisplay + '. Your secret code is ' + data.user_id;
+
+                } else {
+                    console.error('Error:', data.error);
+                }
+            })
+            .catch(error => console.error('Error:', error));
+        }
+        }
+        getUsername();
+
+        function getEvents(user_id) {
+            const csrfToken = localStorage.getItem('csrfToken');
+            const username = localStorage.getItem('username');
+            const currentDate = new Date();
+            const month = currentDate.getMonth() + 1; // JavaScript months are 0-11
+            const year = currentDate.getFullYear();
+            const tag = "Off";
+            // console.log('getEvents:'+ user_id);
+            // console.log(month);
+            // console.log(year);
+
+            fetch("getEvents.php", {
+                method: 'POST',
+                body: JSON.stringify({ user_id, month, year, tag }),
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'CSRF-Token': csrfToken
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const events = data.events;
+                    
+                    events.forEach(event => {
+                        const eventDate = new Date(event.date);
+                        const day = eventDate.getDate();
+                        const cell = document.getElementById(`day-${day}`);
+                        console.log(event.title);
+                        console.log(event.eid);
+                    });
+                } else {
+                    console.error('Error:', data.message);
+                }
+            })
+            .catch(err => console.error('Error:', err));
+        }
+        
+        document.getElementById("shareEvent").addEventListener("click", () => {
+            const shareWith = document.getElementById("shareWith").value.split(",").map(id=>Number(id.trim())).filter(id=>!isNaN(id));
+            const title = document.getElementById('eventTitle').value;
+            const time = document.getElementById('eventTime').value;
+
+            if (!shareWith) {
+                alert("Please enter a mulitple user id including ',' to share with.");
+                return;
+            }
+
+            alert(shareWith);
+
+            fetch("shareEvent.php", {
+                method: "POST",
+                body: JSON.stringify({shareWith, globalSelectedDate,title, time}),
+                headers: {"Content-Type": "application/json"}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    alert("Event shared successfully!");
+                } else {
+                    alert("Failed to share event: " + data.message);
+                    closeModal();
+                    exit;
+                }
+            });
+
+            fetch("event.php", {
+                method: "POST",
+                body: JSON.stringify({globalUserId, title, globalSelectedDate, time}),
+                credentials: "same-origin" // Ensures cookies are included for session authentication
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    const event = {id: data.eventId, title, time};
+                    if(!events[selectedDate]) events[selectedDate] = [];
+                    event.id = data.eventId;
+                    events[selectedDate].push(event);
+                    
+                    alert("Event added&shared successfully!");
+                    insertCalendar(); // Refresh calendar to reflect new event
+                } else {
+                    alert(`Failed to add event: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error("Error in fetch operation:", error);
+                alert(`Failed to add event: ${error.message}`);
+            });
+            
+            closeModal();
+        });
+
+        document.getElementById("shareEvent2").addEventListener("click", () => {
+            const shareWith = [Number(document.getElementById("shareWith2").value.trim())];
+            const title = document.getElementById('editEventTitle').value;
+            const globalSelectedDate = document.getElementById('editEventDate').value;
+            const time = document.getElementById('editEventTime').value;
+
+            if (!shareWith.length === 0) {
+                alert("Please enter a user id to share with.");
+                return;
+            }
+
+            fetch("shareEvent.php", {
+                method: "POST",
+                body: JSON.stringify({shareWith, globalSelectedDate, title, time}),
+                headers: {"Content-Type": "application/json"}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.success) {
+                    alert("Event shared successfully!");
+                } else {
+                    alert("Failed to share event: " + data.message);
+                    closeModal();
+                }
+            });
+
+            fetch("editEvent.php", {
+                method: "POST",
+                body: JSON.stringify({eid:selectedEventId, title, globalSelectedDate, time}),
+                headers: {"Content-Type": "application/json"}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert("Event edited&shared successfully!");
+                    loadEvents();
+                } else {
+                    alert(`Failed to add event: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error("Error in fetch operation:", error);
+                alert(`Failed to add event: ${error.message}`);
+            });
+            
+            closeModal();
+        });
+    </script>
+</body>
+</html>

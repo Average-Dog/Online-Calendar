@@ -1,0 +1,84 @@
+*{
+    font-family: Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;
+}
+
+#header{
+    display: flex;
+    justify-content: space-around;
+    background-color: purple;
+    color:blanchedalmond;
+}
+
+#panel{
+    margin-top: 23px;
+}
+
+.buttons{
+    background-color:purple;
+    border: none;
+    color:blanchedalmond;
+}
+
+.buttons:hover{
+    color:aqua;
+}
+
+.space{
+    background-color: blanchedalmond;
+}
+
+.monthSep{
+    border: 1px gray solid;
+    color: gray;
+    margin-left: 5%;
+    margin-right: 5%;
+}
+
+#currentMonth{
+    display: flex;
+    justify-content: flex-start;
+    gap: 10px;
+    color:blueviolet;
+}
+
+.moveMonth{
+    background-color: white;
+    font-weight: 500;
+    border-radius: 10px;
+    color: purple;
+}
+
+.moveMonth:hover{
+    color:aqua;
+    background-color: blueviolet;
+}
+
+/* add event*/
+#addEvent{
+    font-size: larger;
+}
+
+#textInput{
+  width: 50%;
+  columns: 100px;
+}
+#addText{
+    display: none;
+}
+
+th, td {
+    border:3px purple soild;
+}
+
+table{
+    width: 100%;
+    text-align: center;
+}
+
+td{
+    height:80px;
+}
+
+#events{
+    display: flex;
+}
